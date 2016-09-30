@@ -1,17 +1,44 @@
 #!/bin/sh
 
 
+function check
+{
+    PID=$(docker inspect --format "{{.State.Pid}}" "$1")
+
+    [ -z "$PID"  ] && return 1
+    [ "$PID" == "0" ] && echo "Container $1 not started" && return 2
+
+    return 0
+}
+
+function findContainer
+{
+    check $CONTAINER
+
+    if [ $? -gt 0 ]
+    then
+        echo "Let's try docker-compose typical name"
+        PROJECTNAME=$(basename `pwd`)
+        PROJECTNAME=${PROJECTNAME,,}
+        CONTAINER=${PROJECTNAME//[.-]/}_${CONTAINER}_1
+        check $CONTAINER
+    fi
+
+    return $?
+}
 if [ -z "$1" ]; then
     echo "Usage: `basename "$0"` CONTAINER [COMMAND [ARG]...]"
     echo ""
     echo "Enters the Docker CONTAINER and executes the specified COMMAND."
     echo "If COMMAND is not specified, runs an interactive shell in CONTAINER."
 else
-    PID=$(docker inspect --format "{{.State.Pid}}" "$1")
     CONTAINER=$1
-    [ -z "$PID" ] && exit 1
     shift
+    findContainer
 
+    [ $? -gt 0 ] && exit 1
+
+    echo "Entering $CONTAINER"
     # env is to clear all host environment variables and set then anew
     if [ $# -lt 1 ]; then
         # No arguments, default to `su` which executes the default login shell
@@ -21,5 +48,6 @@ else
         # "$@" is magic in bash, and needs to be in the invocation
         docker exec -it $CONTAINER script -q -c "/bin/bash -c \"$@\"" /dev/null
     fi
+
 fi
 
